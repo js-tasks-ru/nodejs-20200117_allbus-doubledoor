@@ -1,7 +1,9 @@
 function sum(a, b) {
-  if ([a, b].some((value) => typeof value !== 'number')) {
+  const aIsNotNumber = typeof a !== "number";
+  const bIsNotNumber = typeof b !== "number";
+
+  if (aIsNotNumber || bIsNotNumber)
     throw new TypeError();
-  }
 
   return a + b;
 }
