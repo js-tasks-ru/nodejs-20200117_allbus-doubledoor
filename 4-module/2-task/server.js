@@ -9,7 +9,9 @@ const server = new http.Server();
 
 server.on('request', (req, res) => {
   const pathname = url.parse(req.url).pathname.slice(1);
-  if (pathname.split('/').length > 1) {
+  console.log(pathname);
+  if (pathname.includes('/')) {
+    console.log(pathname, 'returning 400 error');
     res.statusCode = 400;
     res.end();
     return;
@@ -19,16 +21,54 @@ server.on('request', (req, res) => {
 
   switch (req.method) {
     case 'POST':
-      const limitSizeStreamOptions = { limit: 1048576 };
 
-      const writeStream = createWriteStream(filepath, res);
-      const limitSizeStream = createLimitSizeStream(limitSizeStreamOptions, res);
+      const writeStream = fs.createWriteStream(filepath, {flags: 'wx+'});
 
-      req.on('abort', () => {
-        fs.unlink(pathname);
-      })
+      writeStream.on('error', err => {
+        if (err.code === 'EEXIST') {
+          res.statusCode = 409;
+          res.end('File already exists');
+          return;
+        }
+    
+        fs.unlink(filepath, (err) => {
+          if (err) throw err;
+          console.log('write stream: file was deleted')
+        });
+    
+        res.statusCode = 500;
+        res.end('Internal server error');
+      });
+    
+      writeStream.on('close', () => {
+        res.statusCode = 201;
+        res.end('File created');
+      });
+
+      const limitSizeStream = new LimitSizeStream({ limit: 1046576 });
+
+      limitSizeStream.on('error', err => {
+        if (err.code === 'LIMIT_EXCEEDED') {
+          res.statusCode = 413;
+          res.end('File is too large');
+        }
+      });
+
+      req.on('close', () => {
+        if (req.aborted) {
+          fs.unlink(filepath, (err) => {
+            if (err) throw err;
+          });
+        }
+      });
+      
+      req.on('error', () => {
+        fs.unlink(filepath, (err) => {
+          if (err) throw err;
+        });
+      });
+
       req.pipe(limitSizeStream).pipe(writeStream);
-
       break;
 
     default:
@@ -36,44 +76,5 @@ server.on('request', (req, res) => {
       res.end('Not implemented');
   }
 });
-
-function createWriteStream(filepath, res) {
-  const writeStream = fs.createWriteStream(filepath, {flags: 'wx'});
-
-  writeStream.on('error', err => {
-    if (err.code === 'EEXIST') {
-      res.statusCode = 409;
-      res.end('File already exists');
-      return;
-    }
-
-    fs.unlink(filepath);
-
-    res.statusCode = 500;
-    res.end('Internal server error');
-  });
-
-  writeStream.on('close', () => {
-    res.statusCode = 201;
-    res.end('File created');
-  });
-
-  return writeStream;
-}
-
-function createLimitSizeStream(options, res) {
-  const limitSizeStream = new LimitSizeStream(options.limit);
-
-  limitSizeStream.on('error', err => {
-    console.log('error in limit stream');
-    if (err.code === 'LIMIT_EXCEEDED') {
-      console.log('LIMIT_EXCEEDED LIMIT_EXCEEDED LIMIT_EXCEEDED');
-      res.statusCode = 419;
-      res.end('File is too large');
-    }
-  });
-
-  return limitSizeStream;
-}
 
 module.exports = server;
