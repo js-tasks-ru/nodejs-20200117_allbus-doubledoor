@@ -38,7 +38,6 @@ server.on('request', (req, res) => {
       const limitSizeStream = new LimitSizeStream({ limit: 1046576 })
         .on('error', err => {
           if (err.code === 'LIMIT_EXCEEDED') {
-            console.log('limit error occured');
             res.statusCode = 413;
             res.end('File is too large');
           } else {
